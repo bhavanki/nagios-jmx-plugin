@@ -335,6 +335,7 @@ public class NagiosJmxPlugin {
      * @param connection MBean server connection.
      * @param objectName Object name.
      * @param operationName Operation name.
+     * @return Operation return value.
      * @throws InstanceNotFoundException XX
      * @throws IOException XX
      * @throws MalformedObjectNameException XX
@@ -342,14 +343,14 @@ public class NagiosJmxPlugin {
      * @throws ReflectionException XX
      * @throws NagiosJmxPluginException XX
      */
-    public void invoke(MBeanServerConnection connection, String objectName,
+    public Object invoke(MBeanServerConnection connection, String objectName,
             String operationName)
     throws InstanceNotFoundException, IOException,
             MalformedObjectNameException, MBeanException, ReflectionException,
             NagiosJmxPluginException
     {
         ObjectName objName = getObjectName(connection, objectName);
-        connection.invoke(objName, operationName, null, null);
+        return connection.invoke(objName, operationName, null, null);
     }
 
     /**
@@ -378,7 +379,8 @@ public class NagiosJmxPlugin {
             return Status.OK.getExitCode();
         }
 
-        if (objectName == null || attributeName == null || serviceUrl == null)
+        if (objectName == null || (operation == null && attributeName == null) ||
+            serviceUrl == null)
         {
             showUsage();
             return Status.CRITICAL.getExitCode();
@@ -411,34 +413,40 @@ public class NagiosJmxPlugin {
                 throw new NagiosJmxPluginException(
                         "Error opening connection: " + e.getMessage(), e);
             }
-            // Query attribute.
-            try {
-                value = query(connection, objectName, attributeName,
-                        attributeKey);
-            } catch (MalformedObjectNameException e) {
-                throw new NagiosJmxPluginException(
-                        "Malformed objectName [" + objectName + "]", e);
-            } catch (InstanceNotFoundException e) {
-                throw new NagiosJmxPluginException(
-                        "objectName not found [" + objectName + "]", e);
-            } catch (AttributeNotFoundException e) {
-                throw new NagiosJmxPluginException(
-                        "attributeName not found [" + attributeName + "]", e);
-            } catch (InvalidKeyException e) {
-                throw new NagiosJmxPluginException(
-                        "attributeKey not found [" + attributeKey + "]", e);
-            } catch (Exception e) {
-                throw new NagiosJmxPluginException(
-                        "Error querying server: " + e.getMessage(), e);
+            // Query attribute if defined.
+            if (attributeName != null) {
+                try {
+                    value = query(connection, objectName, attributeName,
+                            attributeKey);
+                } catch (MalformedObjectNameException e) {
+                    throw new NagiosJmxPluginException(
+                            "Malformed objectName [" + objectName + "]", e);
+                } catch (InstanceNotFoundException e) {
+                    throw new NagiosJmxPluginException(
+                            "objectName not found [" + objectName + "]", e);
+                } catch (AttributeNotFoundException e) {
+                    throw new NagiosJmxPluginException(
+                            "attributeName not found [" + attributeName + "]", e);
+                } catch (InvalidKeyException e) {
+                    throw new NagiosJmxPluginException(
+                            "attributeKey not found [" + attributeKey + "]", e);
+                } catch (Exception e) {
+                    throw new NagiosJmxPluginException(
+                            "Error querying server: " + e.getMessage(), e);
+                }
             }
             // Invoke operation if defined.
             if (operation != null) {
+                Object operationValue;
                 try {
-                    invoke(connection, objectName, operation);
+                    operationValue = invoke(connection, objectName, operation);
                 } catch (Exception e) {
                     throw new NagiosJmxPluginException(
                             "Error invoking operation [" + operation + "]: " +
                             e.getMessage(), e);
+                }
+                if (attributeName == null) {
+                    value = operationValue;
                 }
             }
         } finally {
